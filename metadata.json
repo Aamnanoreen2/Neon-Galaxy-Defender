@@ -1,0 +1,6 @@
+{
+  "name": "Space Arcade",
+  "description": "A modern, high-fidelity neon-styled Space Arcade Dashboard and UI Showcase built with Jetpack Compose.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
