@@ -219,7 +219,7 @@ class RetroGameSurfaceView @JvmOverloads constructor(
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
-        // Handled securely, we wait for startGame() manually
+        startGame()
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
