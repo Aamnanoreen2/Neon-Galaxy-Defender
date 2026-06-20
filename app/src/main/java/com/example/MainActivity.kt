@@ -133,6 +133,9 @@ fun MainAppContainer() {
         // Shared immersive background particles across all screens
         FloatingParticles(speedMultiplier = particleSpeed)
 
+        // Gorgeous interactive particle overlay responding smoothly on tap/touch/drag events in background!
+        InteractiveTouchParticleOverlay()
+
         // Navigation Router
         AnimatedContent(
             targetState = currentScreen,
@@ -207,8 +210,6 @@ fun MainAppContainer() {
             }
         }
 
-        // Gorgeous interactive particle overlay responding smoothly on tap/touch/drag events!
-        InteractiveTouchParticleOverlay()
     }
 }
 
@@ -617,20 +618,7 @@ fun OnboardingFlow(onComplete: () -> Unit) {
     var currentPage by remember { mutableStateOf(0) }
     val totalPages = 4
 
-    // Top Right Skip Anchor
     Box(modifier = Modifier.fillMaxSize()) {
-        TextButton(
-            onClick = onComplete,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .statusBarsPadding()
-                .padding(16.dp)
-                .testTag("onboarding_skip"),
-            colors = ButtonDefaults.textButtonColors(contentColor = NeonCyan)
-        ) {
-            Text("SKIP", style = MaterialTheme.typography.labelLarge)
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -735,6 +723,19 @@ fun OnboardingFlow(onComplete: () -> Unit) {
                 }
             }
 
+        }
+
+        // Top Right Skip Anchor - drawn last to ensure it remains clickable on top of children Columns
+        TextButton(
+            onClick = onComplete,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(16.dp)
+                .testTag("onboarding_skip"),
+            colors = ButtonDefaults.textButtonColors(contentColor = NeonCyan)
+        ) {
+            Text("SKIP", style = MaterialTheme.typography.labelLarge)
         }
     }
 }
