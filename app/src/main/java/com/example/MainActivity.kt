@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +59,7 @@ enum class Screen {
 enum class DashboardTab {
     Home,
     Levels,
+    Shop,
     Stats,
     Settings
 }
@@ -1129,6 +1131,17 @@ fun MainDashboard(
     onChangeParticleSpeed: (Float) -> Unit,
     onChangeVolume: (Float) -> Unit
 ) {
+    val context = LocalContext.current
+    val prefs = remember(context) { context.getSharedPreferences("vortex_racer_prefs", android.content.Context.MODE_PRIVATE) }
+    
+    var playerCoins by remember { mutableIntStateOf(prefs.getInt("player_coins", 500)) } 
+    var selectedSkin by remember { mutableStateOf(prefs.getString("selected_skin", "DEFAULT") ?: "DEFAULT") }
+    var unlockedSkinsSet by remember { mutableStateOf(prefs.getStringSet("unlocked_skins", setOf("DEFAULT")) ?: setOf("DEFAULT")) }
+
+    var boosterShieldCount by remember { mutableIntStateOf(prefs.getInt("booster_shield_count", 2)) }
+    var boosterDamageCount by remember { mutableIntStateOf(prefs.getInt("booster_damage_count", 1)) }
+    var boosterWeaponCount by remember { mutableIntStateOf(prefs.getInt("booster_weapon_count", 0)) }
+
     var selectedTab by remember { mutableStateOf(DashboardTab.Home) }
     
     // Play Game interactive states
@@ -1148,6 +1161,7 @@ fun MainDashboard(
                 listOf(
                     Triple(DashboardTab.Home, "Home", Icons.Default.Home),
                     Triple(DashboardTab.Levels, "Quests", Icons.Default.List),
+                    Triple(DashboardTab.Shop, "Shop", Icons.Default.ShoppingCart),
                     Triple(DashboardTab.Stats, "Arena", Icons.Default.Person),
                     Triple(DashboardTab.Settings, "System", Icons.Default.Settings)
                 ).forEach { (tab, label, icon) ->
@@ -1194,6 +1208,30 @@ fun MainDashboard(
                             MiniRetroGameView(
                                 selectedLevel = selectedLevelForPlay,
                                 hapticFeedbackEnabled = hapticFeedback,
+                                selectedSkin = selectedSkin,
+                                shieldBoosterCount = boosterShieldCount,
+                                damageBoosterCount = boosterDamageCount,
+                                weaponBoosterCount = boosterWeaponCount,
+                                onUseBooster = { boosterId ->
+                                    when (boosterId) {
+                                        "SHIELD" -> {
+                                            boosterShieldCount = (boosterShieldCount - 1).coerceAtLeast(0)
+                                            prefs.edit().putInt("booster_shield_count", boosterShieldCount).apply()
+                                        }
+                                        "DAMAGE" -> {
+                                            boosterDamageCount = (boosterDamageCount - 1).coerceAtLeast(0)
+                                            prefs.edit().putInt("booster_damage_count", boosterDamageCount).apply()
+                                        }
+                                        "WEAPON" -> {
+                                            boosterWeaponCount = (boosterWeaponCount - 1).coerceAtLeast(0)
+                                            prefs.edit().putInt("booster_weapon_count", boosterWeaponCount).apply()
+                                        }
+                                    }
+                                },
+                                onAddCoins = { coins ->
+                                    playerCoins += coins
+                                    prefs.edit().putInt("player_coins", playerCoins).apply()
+                                },
                                 onClose = { isPlayingMiniGame = false },
                                 onGainXp = onLevelUp,
                                 onGameCompleted = onGameCompleted
@@ -1212,6 +1250,70 @@ fun MainDashboard(
                         maxUnlockedLevel = maxUnlockedLevel,
                         selectedLevel = selectedLevelForPlay,
                         onSelectLevel = onSelectLevel
+                    )
+                    DashboardTab.Shop -> ShopView(
+                        playerCoins = playerCoins,
+                        selectedSkin = selectedSkin,
+                        unlockedSkins = unlockedSkinsSet,
+                        boosterShieldCount = boosterShieldCount,
+                        boosterDamageCount = boosterDamageCount,
+                        boosterWeaponCount = boosterWeaponCount,
+                        onPurchaseSkin = { skinId, price ->
+                            playerCoins -= price
+                            unlockedSkinsSet = unlockedSkinsSet + skinId
+                            prefs.edit()
+                                .putInt("player_coins", playerCoins)
+                                .putStringSet("unlocked_skins", unlockedSkinsSet)
+                                .apply()
+                        },
+                        onSelectSkin = { skinId ->
+                            selectedSkin = skinId
+                            prefs.edit().putString("selected_skin", skinId).apply()
+                        },
+                        onPurchaseBooster = { boosterType, price ->
+                            playerCoins -= price
+                            when (boosterType) {
+                                "SHIELD" -> {
+                                    boosterShieldCount += 1
+                                    prefs.edit().putInt("booster_shield_count", boosterShieldCount).apply()
+                                }
+                                "DAMAGE" -> {
+                                    boosterDamageCount += 1
+                                    prefs.edit().putInt("booster_damage_count", boosterDamageCount).apply()
+                                }
+                                "WEAPON" -> {
+                                    boosterWeaponCount += 1
+                                    prefs.edit().putInt("booster_weapon_count", boosterWeaponCount).apply()
+                                }
+                            }
+                            prefs.edit().putInt("player_coins", playerCoins).apply()
+                        },
+                        onMysteryBoxOpened = { bonusCoins, rewardBooster, rewardSkin ->
+                            if (bonusCoins > 0) {
+                                playerCoins += bonusCoins
+                            }
+                            if (rewardSkin != null) {
+                                unlockedSkinsSet = unlockedSkinsSet + rewardSkin
+                                prefs.edit().putStringSet("unlocked_skins", unlockedSkinsSet).apply()
+                            }
+                            if (rewardBooster != null) {
+                                when (rewardBooster) {
+                                    "SHIELD" -> {
+                                        boosterShieldCount += 1
+                                        prefs.edit().putInt("booster_shield_count", boosterShieldCount).apply()
+                                    }
+                                    "DAMAGE" -> {
+                                        boosterDamageCount += 1
+                                        prefs.edit().putInt("booster_damage_count", boosterDamageCount).apply()
+                                    }
+                                    "WEAPON" -> {
+                                        boosterWeaponCount += 1
+                                        prefs.edit().putInt("booster_weapon_count", boosterWeaponCount).apply()
+                                    }
+                                }
+                            }
+                            prefs.edit().putInt("player_coins", playerCoins).apply()
+                        }
                     )
                     DashboardTab.Stats -> StatsView(
                         playerLevel = playerLevel,
@@ -1683,6 +1785,12 @@ fun PowerUpIndicator(name: String, color: Color, active: Boolean) {
 fun MiniRetroGameView(
     selectedLevel: Int,
     hapticFeedbackEnabled: Boolean = true,
+    selectedSkin: String,
+    shieldBoosterCount: Int,
+    damageBoosterCount: Int,
+    weaponBoosterCount: Int,
+    onUseBooster: (String) -> Unit,
+    onAddCoins: (Int) -> Unit,
     onClose: () -> Unit,
     onGainXp: () -> Unit,
     onGameCompleted: (Int, Boolean) -> Unit
@@ -1690,16 +1798,76 @@ fun MiniRetroGameView(
     val context = LocalContext.current
     var score by remember { mutableIntStateOf(0) }
     var lives by remember { mutableIntStateOf(3) }
+    var coinsEarnedThisRun by remember { mutableIntStateOf(0) }
+    var currentMultiplier by remember { mutableIntStateOf(1) }
+    var enemiesKilledThisRun by remember { mutableIntStateOf(0) }
+    var survivalTimerSeconds by remember { mutableIntStateOf(0) }
+    
     var gameStarted by remember { mutableStateOf(false) }
     var isGameOver by remember { mutableStateOf(false) }
 
+    // Pre-game equipment equip selection
+    var equipShield by remember { mutableStateOf(false) }
+    var equipDamage by remember { mutableStateOf(false) }
+    var equipWeapon by remember { mutableStateOf(false) }
+
+    // Track active quest claims in this run
+    var activeQuest1Claimed by remember { mutableStateOf(false) }
+    var activeQuest2Claimed by remember { mutableStateOf(false) }
+    var activeQuest3Claimed by remember { mutableStateOf(false) }
+
     // Reference to the custom view to handle pause / resume and cleanup safely
     var surfaceViewRef by remember { mutableStateOf<RetroGameSurfaceView?>(null) }
+
+    // Rollup Game Over Animated Score Ticker
+    var animatedScore by remember { mutableIntStateOf(0) }
 
     DisposableEffect(gameStarted) {
         onDispose {
             surfaceViewRef?.stopGame()
             surfaceViewRef = null
+        }
+    }
+
+    LaunchedEffect(gameStarted, isGameOver) {
+        if (gameStarted && !isGameOver) {
+            survivalTimerSeconds = 0
+            while (true) {
+                delay(1000L)
+                survivalTimerSeconds += 1
+            }
+        }
+    }
+
+    LaunchedEffect(isGameOver) {
+        if (isGameOver) {
+            animatedScore = 0
+            val steps = 30
+            val increment = (score / steps).coerceAtMost(score).coerceAtLeast(1)
+            repeat(steps) {
+                delay(25)
+                animatedScore = (animatedScore + increment).coerceAtMost(score)
+            }
+            animatedScore = score
+        }
+    }
+
+    // Dynamic Live Quest Watcher
+    LaunchedEffect(enemiesKilledThisRun, survivalTimerSeconds, score) {
+        if (enemiesKilledThisRun >= 20 && !activeQuest1Claimed) {
+            activeQuest1Claimed = true
+            onAddCoins(100)
+            if (hapticFeedbackEnabled) surfaceViewRef?.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
+        }
+        if (survivalTimerSeconds >= 30 && !activeQuest2Claimed) {
+            activeQuest2Claimed = true
+            onAddCoins(100)
+            if (hapticFeedbackEnabled) surfaceViewRef?.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
+        }
+        if (score >= 2000 && !activeQuest3Claimed) {
+            activeQuest3Claimed = true
+            onAddCoins(100)
+            if (hapticFeedbackEnabled) surfaceViewRef?.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
         }
     }
 
@@ -1757,32 +1925,40 @@ fun MiniRetroGameView(
                         )
                     }
 
-                    Text(
-                        text = "ENERGY: ${"❤️".repeat(lives.coerceAtLeast(0))}", 
-                        style = MaterialTheme.typography.labelLarge, 
-                        color = SoftNeonRed,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "ENERGY: ${"❤️".repeat(lives.coerceAtLeast(0))}", 
+                            style = MaterialTheme.typography.labelLarge, 
+                            color = SoftNeonRed,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "💰 Collected: $coinsEarnedThisRun",
+                            fontSize = 11.sp,
+                            color = Color.Yellow,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
-                // In-game dynamic Power-up icons row
+                // In-game dynamic Power-up active indicator ticks
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    PowerUpIndicator("SHIELD ON", SoftNeonGreen, true)
+                    PowerUpIndicator("SHIELD ENERGY", SoftNeonGreen, lives > 0)
                     Spacer(modifier = Modifier.width(8.dp))
-                    PowerUpIndicator("RAPID FIRE", NeonIndigo, lives >= 3)
+                    PowerUpIndicator("RAPID COMBO", NeonIndigo, currentMultiplier > 1)
                     Spacer(modifier = Modifier.width(8.dp))
-                    PowerUpIndicator("LASER X2", NeonCyan, score > 800)
+                    PowerUpIndicator("TIME TIMER", NeonCyan, survivalTimerSeconds > 0)
                 }
             }
 
             if (!gameStarted) {
-                // Pre-game introduction overlay
+                // Pre-game Core Equipment & Booster checklist Selection Menu
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -1792,41 +1968,88 @@ fun MiniRetroGameView(
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
-                            .padding(24.dp)
+                            .padding(20.dp)
                             .clip(RoundedCornerShape(24.dp))
                             .background(Color.White.copy(alpha = 0.03f))
                             .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
-                            .padding(24.dp)
+                            .padding(20.dp)
                     ) {
                         Text(
-                            text = "NEON INVADERS",
-                            style = MaterialTheme.typography.displayMedium,
+                            text = "NEON DEFENDER",
+                            style = MaterialTheme.typography.headlineLarge,
                             color = NeonCyan,
                             textAlign = TextAlign.Center,
                             fontWeight = FontWeight.ExtraBold,
                             letterSpacing = 1.sp
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = "Drag horizontally to slide your cybernetic space interceptor. Hold down to auto-fire vibrant laser pulses! Blast wave formations of incoming neon reactors and collect powerful weapon cores & energetic buffs to dominate the leaderboards!",
-                            style = MaterialTheme.typography.bodyLarge,
+                            text = "Drag side-to-side to slide. Tap/hold to auto-shoot vibrant laser bursts. Equip pre-game cores below to gain instant advantages!",
+                            style = MaterialTheme.typography.bodyMedium,
                             color = Slate400,
                             textAlign = TextAlign.Center,
-                            lineHeight = 24.sp
+                            lineHeight = 20.sp
                         )
-                        Spacer(modifier = Modifier.height(28.dp))
+                        
+                        Spacer(modifier = Modifier.height(18.dp))
+                        
+                        Text(
+                            text = "EQUIP CORES FROM INVENTORY",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NeonIndigo,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Booster Items Column
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            PreGameBoosterRow(
+                                title = "Orbital Shield Core",
+                                description = "Start next run with defensive energy active",
+                                count = shieldBoosterCount,
+                                isEquipped = equipShield,
+                                onToggle = { if (shieldBoosterCount > 0) equipShield = !equipShield }
+                            )
+                            PreGameBoosterRow(
+                                title = "Damage Pulse Matrix",
+                                description = "Initial 45s weapon power doubled",
+                                count = damageBoosterCount,
+                                isEquipped = equipDamage,
+                                onToggle = { if (damageBoosterCount > 0) equipDamage = !equipDamage }
+                            )
+                            PreGameBoosterRow(
+                                title = "Weapon Link Accelerator",
+                                description = "Start with starting weapon stage tier +1",
+                                count = weaponBoosterCount,
+                                isEquipped = equipWeapon,
+                                onToggle = { if (weaponBoosterCount > 0) equipWeapon = !equipWeapon }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(26.dp))
+
                         Button(
-                            onClick = { gameStarted = true },
+                            onClick = {
+                                // Consume equipped boosters before launching run
+                                if (equipShield) onUseBooster("SHIELD")
+                                if (equipDamage) onUseBooster("DAMAGE")
+                                if (equipWeapon) onUseBooster("WEAPON")
+                                gameStarted = true
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = NeonIndigo),
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth(0.8f).height(50.dp)
+                            modifier = Modifier.fillMaxWidth(0.9f).height(48.dp).testTag("engage_engines_btn")
                         ) {
                             Text("ENGAGE ENGINES", color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         }
                     }
                 }
             } else if (isGameOver) {
-                // Game over overlay
+                // Professional Deluxe Game Over Summary Overlay Screen
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -1838,73 +2061,94 @@ fun MiniRetroGameView(
                         modifier = Modifier
                             .padding(24.dp)
                             .clip(RoundedCornerShape(24.dp))
-                            .background(Color.White.copy(alpha = 0.03f))
-                            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
-                            .padding(24.dp)
+                            .background(Color(0xFF0B0B1E).copy(alpha = 0.95f))
+                            .border(2.dp, SoftNeonRed.copy(alpha = 0.6f), RoundedCornerShape(24.dp))
+                            .padding(28.dp)
                     ) {
                         Text(
-                            text = "INTELLIGENCE BRIEF", 
-                            style = MaterialTheme.typography.labelSmall, 
-                            color = SoftNeonRed, 
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 2.sp
-                        )
-                        Text(
-                            text = "DECK CRITICAL END", 
-                            style = MaterialTheme.typography.headlineLarge, 
+                            text = "SYSTEM ERROR",
+                            style = MaterialTheme.typography.labelMedium,
                             color = SoftNeonRed,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(vertical = 8.dp)
+                            letterSpacing = 3.sp
                         )
                         Text(
-                            text = "FINAL SCORE: $score POINTS", 
-                            style = MaterialTheme.typography.titleLarge, 
-                            color = Color.White, 
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(bottom = 24.dp)
+                            text = "GAME OVER",
+                            style = MaterialTheme.typography.displayMedium,
+                            color = SoftNeonRed,
+                            fontWeight = FontWeight.ExtraBold,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 4.dp).testTag("game_over_title")
                         )
                         
+                        Divider(color = Color.White.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 12.dp))
+
+                        // Stats Summary Box
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            GameOverScoreStat("FINAL SCORE", "$animatedScore pts", NeonCyan)
+                            GameOverScoreStat("GOLD EARNED", "+$coinsEarnedThisRun coins", Color.Yellow)
+                            GameOverScoreStat("SECTOR LEVEL", "Sector $selectedLevel", NeonIndigo)
+                            GameOverScoreStat("DEFEATED THREATS", "$enemiesKilledThisRun enemies", SoftNeonGreen)
+                            GameOverScoreStat("SURVIVAL SESSION", "${survivalTimerSeconds}s elapsed", Color.White)
+                        }
+
+                        Spacer(modifier = Modifier.height(28.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Button(
                                 onClick = {
-                                    // Reset game states
+                                    // Reset game thread states
                                     score = 0
                                     lives = 3
+                                    coinsEarnedThisRun = 0
+                                    enemiesKilledThisRun = 0
+                                    survivalTimerSeconds = 0
+                                    animatedScore = 0
                                     isGameOver = false
-                                    // Force recreation of SurfaceView for a clean start
                                     gameStarted = false
+                                    equipShield = false
+                                    equipDamage = false
+                                    equipWeapon = false
+                                    activeQuest1Claimed = false
+                                    activeQuest2Claimed = false
+                                    activeQuest3Claimed = false
+                                    
                                     surfaceViewRef?.stopGame()
                                     surfaceViewRef = null
                                     
-                                    // Set started to true back on next tick
                                     gameStarted = true
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.weight(1f)
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1.5f).height(48.dp).testTag("replay_game_btn")
                             ) {
-                                Text("RETRY ENGINE", color = Color.Black, fontWeight = FontWeight.Bold)
+                                Text("PLAY AGAIN", color = Color.Black, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                             }
+                            
                             Button(
                                 onClick = {
                                     surfaceViewRef?.stopGame()
                                     surfaceViewRef = null
                                     onClose()
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.1f)),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.weight(1f)
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f).height(48.dp).testTag("home_menu_btn")
                             ) {
-                                Text("DECK RETURN", color = Color.White)
+                                Text("DECK ESC", color = Color.White, style = MaterialTheme.typography.bodyMedium)
                             }
                         }
                     }
                 }
             } else {
-                // Core Gameplay active High-Performance Native SurfaceView Game Engine
+                // Core Dual Layout: Canvas SurfaceView + Floating Quest Cards Pane Layer
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -1914,6 +2158,8 @@ fun MiniRetroGameView(
                         factory = { ctx ->
                             RetroGameSurfaceView(ctx).apply {
                                 setStartLevel(selectedLevel)
+                                setSelectedSkin(selectedSkin)
+                                setBoosters(equipShield, equipDamage, if (equipWeapon) 2 else 1)
                                 setHapticFeedbackEnabled(hapticFeedbackEnabled)
                                 setGameCallbacks(
                                     onScoreChanged = { newScore -> 
@@ -1921,13 +2167,24 @@ fun MiniRetroGameView(
                                         onGameCompleted(newScore, false) 
                                     },
                                     onLivesChanged = { newLives -> lives = newLives },
-                                    onGameOver = { finalScore -> 
-                                        isGameOver = true 
-                                        onGameCompleted(finalScore, false) 
+                                    onGameOver = { finalScore, collectedCoins, finalLevel, killedEnemies ->
+                                        score = finalScore
+                                        coinsEarnedThisRun = collectedCoins
+                                        enemiesKilledThisRun = killedEnemies
+                                        isGameOver = true
+                                        onAddCoins(collectedCoins)
+                                        onGameCompleted(finalScore, false)
                                     },
                                     onXpEarned = { 
                                         onGainXp() 
                                         onGameCompleted(score, true) 
+                                    },
+                                    onStatsUpdated = { newScore, newLives, newMultiplier, collectedCoins, killedEnemies ->
+                                        score = newScore
+                                        lives = newLives
+                                        currentMultiplier = newMultiplier
+                                        coinsEarnedThisRun = collectedCoins
+                                        enemiesKilledThisRun = killedEnemies
                                     }
                                 )
                                 surfaceViewRef = this
@@ -1935,14 +2192,550 @@ fun MiniRetroGameView(
                         },
                         modifier = Modifier.fillMaxSize(),
                         update = { view ->
-                            // Update callback values if needed dynamically
+                            // Dynamically refresh values on updates
                         }
                     )
+
+                    // Dynamic Combo Overlay HUD Indicator
+                    if (currentMultiplier > 1) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .offset(y = (-140).dp)
+                        ) {
+                            Text(
+                                text = "COMBO",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = SoftNeonRed,
+                                letterSpacing = 2.sp
+                            )
+                            Text(
+                                text = "x$currentMultiplier",
+                                fontSize = 38.sp,
+                                color = if (currentMultiplier >= 4) Color.Yellow else NeonCyan,
+                                fontWeight = FontWeight.Black,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = "+${(currentMultiplier - 1) * 100}% SCORE BOOST",
+                                fontSize = 10.sp,
+                                color = Color.White.copy(alpha = 0.8f),
+                                letterSpacing = 1.sp
+                            )
+                        }
+                    }
+
+                    // Floating Glass Quest Box Panel (Top-Right gameplay overlay)
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 16.dp, end = 16.dp)
+                            .width(170.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                            .padding(8.dp)
+                    ) {
+                        Text(
+                            text = "LIVE SECTOR PLOTS",
+                            fontSize = 9.sp,
+                            color = NeonIndigo,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.sp,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                        
+                        QuestHudItem(
+                            description = "Trash 20 Raiders",
+                            progressText = "${enemiesKilledThisRun.coerceAtMost(20)}/20",
+                            progressRatio = (enemiesKilledThisRun.toFloat() / 20f).coerceIn(0f, 1f),
+                            isCompleted = activeQuest1Claimed
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        QuestHudItem(
+                            description = "Withstand 30s",
+                            progressText = "${survivalTimerSeconds.coerceAtMost(30)}s/30s",
+                            progressRatio = (survivalTimerSeconds.toFloat() / 30f).coerceIn(0f, 1f),
+                            isCompleted = activeQuest2Claimed
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        QuestHudItem(
+                            description = "Rake 2000 points",
+                            progressText = "${score.coerceAtMost(2000)}/2000",
+                            progressRatio = (score.toFloat() / 2000f).coerceIn(0f, 1f),
+                            isCompleted = activeQuest3Claimed
+                        )
+                    }
                 }
             }
         }
     }
 }
+
+// Pre-game equipment equip selection row
+@Composable
+fun PreGameBoosterRow(
+    title: String,
+    description: String,
+    count: Int,
+    isEquipped: Boolean,
+    onToggle: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isEquipped) Color.White.copy(alpha = 0.05f) else Color.Transparent)
+            .border(0.5.dp, if (isEquipped) NeonCyan else Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+            .padding(10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(6.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color.Yellow.copy(alpha = 0.15f))
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Text("Bal: $count", fontSize = 9.sp, color = Color.Yellow, fontWeight = FontWeight.Bold)
+                }
+            }
+            Text(description, fontSize = 10.sp, color = Slate400, maxLines = 1)
+        }
+        
+        Button(
+            onClick = onToggle,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isEquipped) SoftNeonGreen else Color.White.copy(alpha = 0.1f)
+            ),
+            shape = RoundedCornerShape(6.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            modifier = Modifier.height(28.dp),
+            enabled = count > 0
+        ) {
+            Text(
+                text = if (isEquipped) "READY" else if (count > 0) "EQUIP" else "EMPTY",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isEquipped) Color.Black else Color.White
+            )
+        }
+    }
+}
+
+// Translucent Game Over Stat Rows
+@Composable
+fun GameOverScoreStat(label: String, value: String, valueColor: Color) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.White.copy(alpha = 0.02f))
+            .border(0.5.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, fontSize = 12.sp, color = Slate400, fontWeight = FontWeight.SemiBold)
+        Text(value, fontSize = 14.sp, color = valueColor, fontWeight = FontWeight.Bold)
+    }
+}
+
+// Live In-game Side Quest progress card
+@Composable
+fun QuestHudItem(
+    description: String,
+    progressText: String,
+    progressRatio: Float,
+    isCompleted: Boolean
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = description,
+                fontSize = 10.sp,
+                color = if (isCompleted) SoftNeonGreen else Color.White,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
+            )
+            Text(
+                text = if (isCompleted) "CLAIMED" else progressText,
+                fontSize = 9.sp,
+                color = if (isCompleted) SoftNeonGreen else Color.Yellow,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Spacer(modifier = Modifier.height(2.dp))
+        LinearProgressIndicator(
+            progress = progressRatio,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp)),
+            color = if (isCompleted) SoftNeonGreen else NeonCyan,
+            trackColor = Color.White.copy(alpha = 0.1f)
+        )
+    }
+}
+
+
+// ----------------------------------------------------
+// SUBWAY SURFERS PRE-GAME UPGRADE SHOP VIEW
+// ----------------------------------------------------
+@Composable
+fun ShopView(
+    playerCoins: Int,
+    selectedSkin: String,
+    unlockedSkins: Set<String>,
+    boosterShieldCount: Int,
+    boosterDamageCount: Int,
+    boosterWeaponCount: Int,
+    onPurchaseSkin: (String, Int) -> Unit,
+    onSelectSkin: (String) -> Unit,
+    onPurchaseBooster: (String, Int) -> Unit,
+    onMysteryBoxOpened: (Int, String?, String?) -> Unit
+) {
+    var activeCategoryTab by remember { mutableStateOf(0) } // 0: Spaceships, 1: Cores, 2: Mystery Box
+    var mysteryBoxActiveState by remember { mutableStateOf(false) } // Opening animation running
+    var mysteryRewardsText by remember { mutableStateOf("") }
+    
+    val scope = rememberCoroutineScope()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF050510))
+            .padding(16.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Header Balance Wallet Panel
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = 0.05f))
+                    .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("NEON VORTEX SUPPLY", fontSize = 11.sp, color = NeonIndigo, fontWeight = FontWeight.Bold)
+                    Text("CREW LOGISTICS DECK", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.ExtraBold)
+                }
+                
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Yellow.copy(alpha = 0.12f))
+                        .border(1.dp, Color.Yellow.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("💰", fontSize = 15.sp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "$playerCoins Coins",
+                            fontSize = 14.sp,
+                            color = Color.Yellow,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.testTag("shop_coin_balance")
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Categories Selector Toggles
+            TabRow(
+                selectedTabIndex = activeCategoryTab,
+                containerColor = Color.Transparent,
+                contentColor = NeonCyan,
+                divider = {},
+                indicator = { tabPositions ->
+                    TabRowDefaults.Indicator(
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[activeCategoryTab]),
+                        color = NeonCyan,
+                        height = 2.dp
+                    )
+                }
+            ) {
+                listOf("Spaceships", "Boosters", "Mystery").forEachIndexed { idx, label ->
+                    Tab(
+                        selected = activeCategoryTab == idx,
+                        onClick = { activeCategoryTab = idx },
+                        text = { Text(label, fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Subviews Category renders
+            when (activeCategoryTab) {
+                0 -> {
+                    // Spaceship Custom Cosmetic Skins Matrix
+                    val skinsList = listOf(
+                        SkinItem("DEFAULT", "Classic Cyber Jet", 0, "Standard neon cyan tactical fighter", NeonCyan),
+                        SkinItem("NEON_VORTEX", "Vortex Interceptor", 150, "Flickering pink rocket tail fighter", NeonIndigo),
+                        SkinItem("PHOENIX_FIRE", "Phoenix Fire delta", 300, "Aggressive delta fiery thermal delta", Color(0xFFF59E0B)),
+                        SkinItem("CYBER_SHADOW", "Shadow Emerald Shard", 500, "Triangular matrix green phantom wing", Color(0xFF10B981))
+                    )
+                    
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(skinsList.size) { i ->
+                            val skin = skinsList[i]
+                            val isUnlocked = unlockedSkins.contains(skin.id)
+                            val isEquipped = selectedSkin == skin.id
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.White.copy(alpha = 0.03f))
+                                    .border(1.dp, if (isEquipped) skin.glowColor else Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(skin.title, fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text(skin.description, fontSize = 10.sp, color = Slate400, maxLines = 1)
+                                }
+                                
+                                Button(
+                                    onClick = {
+                                        if (isUnlocked) {
+                                            onSelectSkin(skin.id)
+                                        } else if (playerCoins >= skin.price) {
+                                            onPurchaseSkin(skin.id, skin.price)
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isEquipped) skin.glowColor else if (isUnlocked) Color.White.copy(alpha = 0.08f) else Color.Yellow.copy(alpha = 0.15f)
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.height(34.dp).testTag("skin_purchase_btn_${skin.id.lowercase()}")
+                                ) {
+                                    Text(
+                                        text = if (isEquipped) "EQUIPPED" else if (isUnlocked) "EQUIP" else "💰 ${skin.price}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isEquipped) Color.Black else if (isUnlocked) Color.White else Color.Yellow
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                1 -> {
+                    // Power Up Consumable cores store
+                    val boostersList = listOf(
+                        BoosterPurchaseItem("SHIELD", "Orbital Shield Core", 50, "Spawn next run with permanent collision barrier", boosterShieldCount),
+                        BoosterPurchaseItem("DAMAGE", "Hyper Dual Damage Core", 75, "Enables devastating firepower double damage at start", boosterDamageCount),
+                        BoosterPurchaseItem("WEAPON", "Laser-Link Starter", 100, "Instantly activate Tier 2 weaponry stream launcher", boosterWeaponCount)
+                    )
+
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(boostersList.size) { i ->
+                            val b = boostersList[i]
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.White.copy(alpha = 0.03f))
+                                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row {
+                                        Text(b.title, fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(Color.White.copy(alpha = 0.1f))
+                                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("Inventory: ${b.inventoryCount}", fontSize = 9.sp, color = NeonCyan)
+                                        }
+                                    }
+                                    Text(b.description, fontSize = 11.sp, color = Slate400, maxLines = 1)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        if (playerCoins >= b.price) {
+                                            onPurchaseBooster(b.id, b.price)
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (playerCoins >= b.price) Color.Yellow.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f)
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.height(34.dp).testTag("booster_buy_btn_${b.id.lowercase()}")
+                                ) {
+                                    Text(
+                                        text = "💰 ${b.price}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (playerCoins >= b.price) Color.Yellow else Slate500
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                2 -> {
+                    // Subway Surfers Mystery Box unboxing screen mechanics
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.White.copy(alpha = 0.02f))
+                            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "SUPPLY CRYPTO-VAULT",
+                            fontSize = 12.sp,
+                            color = NeonIndigo,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 2.sp
+                        )
+                        Text(
+                            text = "MYSTERY SUPPLY BOX",
+                            fontSize = 20.sp,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+                        
+                        // Golden spinning locked vault card
+                        Box(
+                            modifier = Modifier
+                                .size(130.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color.Yellow.copy(alpha = 0.04f))
+                                .border(2.dp, Color.Yellow.copy(alpha = 0.35f), RoundedCornerShape(20.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("📦", fontSize = 65.sp, modifier = Modifier.testTag("mystery_box_icon"))
+                        }
+
+                        Spacer(modifier = Modifier.height(18.dp))
+                        Text(
+                            text = "Mystery Vault roll rewards: 85-300 bonus cash coins, specialized ship combat core boosts, or an ultra rare Spaceship skin!",
+                            fontSize = 11.sp,
+                            color = Slate400,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 14.dp)
+                        )
+                        
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Button(
+                            onClick = {
+                                if (playerCoins >= 80 && !mysteryBoxActiveState) {
+                                    mysteryBoxActiveState = true
+                                    mysteryRewardsText = "DECOMPRESSION INTERLOCK COMMENCING..."
+                                    scope.launch {
+                                        delay(1500L) // spin suspense timer
+                                        val prizeRoll = (0..2).random()
+                                        when (prizeRoll) {
+                                            0 -> {
+                                                val randCash = (85..280).random()
+                                                onMysteryBoxOpened(randCash, null, null)
+                                                mysteryRewardsText = "UNLOCKED CRYPTO CASH REWARD!\n💰 +$randCash Coins added to inventory!"
+                                            }
+                                            1 -> {
+                                                val types = listOf("SHIELD", "DAMAGE", "WEAPON")
+                                                val selType = types.random()
+                                                onMysteryBoxOpened(0, selType, null)
+                                                mysteryRewardsText = "UNBOXED TECHNICAL AMMUNITION CORE!\n⚡ Equipped booster inventory balance increased!"
+                                            }
+                                            else -> {
+                                                val skins = listOf("NEON_VORTEX", "PHOENIX_FIRE", "CYBER_SHADOW")
+                                                val randSkin = skins.random()
+                                                onMysteryBoxOpened(0, null, randSkin)
+                                                mysteryRewardsText = "LEGENDARY STARPLANE SKIN CORE UNBLOCKED!\n🛸 Spaceship pattern unlocked: $randSkin!"
+                                            }
+                                        }
+                                        mysteryBoxActiveState = false
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Yellow),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth(0.8f).height(45.dp).testTag("mystery_buy_btn"),
+                            enabled = playerCoins >= 80 && !mysteryBoxActiveState
+                        ) {
+                            Text(
+                                text = "UNLOCK VAULT (💰 80)",
+                                color = Color.Black,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+
+                        if (mysteryRewardsText.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(18.dp))
+                            Text(
+                                text = mysteryRewardsText,
+                                fontSize = 12.sp,
+                                color = if (mysteryRewardsText.contains("DECOMPRESSION")) NeonCyan else SoftNeonGreen,
+                                textAlign = TextAlign.Center,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.testTag("mystery_result_text")
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Data holder classes for Shopping views
+data class SkinItem(
+    val id: String,
+    val title: String,
+    val price: Int,
+    val description: String,
+    val glowColor: Color
+)
+
+data class BoosterPurchaseItem(
+    val id: String,
+    val title: String,
+    val price: Int,
+    val description: String,
+    val inventoryCount: Int
+)
 
 
 // ----------------------------------------------------

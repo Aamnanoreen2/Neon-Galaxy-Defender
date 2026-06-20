@@ -17,8 +17,9 @@ import kotlin.random.Random
 sealed class GameEvent {
     data class ScoreChanged(val score: Int) : GameEvent()
     data class LivesChanged(val lives: Int) : GameEvent()
-    data class GameOver(val score: Int) : GameEvent()
+    data class GameOver(val score: Int, val coinsEarned: Int, val levelReached: Int, val enemiesKilled: Int) : GameEvent()
     object XpEarned : GameEvent()
+    data class StatsUpdated(val score: Int, val lives: Int, val multiplier: Int, val coinsEarned: Int, val enemiesKilled: Int) : GameEvent()
 }
 
 // Data Classes for Modern Fast-Paced Neon Space Shooter
@@ -105,8 +106,14 @@ class RetroGameSurfaceView @JvmOverloads constructor(
 
     private var onScoreChanged: ((Int) -> Unit)? = null
     private var onLivesChanged: ((Int) -> Unit)? = null
-    private var onGameOver: ((Int) -> Unit)? = null
+    private var onGameOver: ((Int, Int, Int, Int) -> Unit)? = null // score, coins, level, kills
     private var onXpEarned: (() -> Unit)? = null
+    private var onStatsUpdated: ((Int, Int, Int, Int, Int) -> Unit)? = null // score, lives, multiplier, coins, kills
+
+    private var selectedSkinValue: String = "DEFAULT"
+    private var boosterShieldValue: Boolean = false
+    private var boosterDoubleDamageValue: Boolean = false
+    private var boosterWeaponLevelValue: Int = 1
 
     private var gameThread: GameThread? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -117,6 +124,22 @@ class RetroGameSurfaceView @JvmOverloads constructor(
         holder.addCallback(this)
         setWillNotDraw(false)
         isFocusable = true
+    }
+
+    fun setSelectedSkin(skin: String) {
+        selectedSkinValue = skin
+        gameThread?.selectedSkin = skin
+    }
+
+    fun setBoosters(shield: Boolean, doubleDamage: Boolean, weaponLevel: Int) {
+        boosterShieldValue = shield
+        boosterDoubleDamageValue = doubleDamage
+        boosterWeaponLevelValue = weaponLevel
+        gameThread?.let { thread ->
+            thread.boosterShield = shield
+            thread.boosterDoubleDamage = doubleDamage
+            thread.boosterWeaponLevel = weaponLevel
+        }
     }
 
     fun setStartLevel(level: Int) {
@@ -152,13 +175,15 @@ class RetroGameSurfaceView @JvmOverloads constructor(
     fun setGameCallbacks(
         onScoreChanged: (Int) -> Unit,
         onLivesChanged: (Int) -> Unit,
-        onGameOver: (Int) -> Unit,
-        onXpEarned: () -> Unit
+        onGameOver: (Int, Int, Int, Int) -> Unit,
+        onXpEarned: () -> Unit,
+        onStatsUpdated: ((Int, Int, Int, Int, Int) -> Unit)? = null
     ) {
         this.onScoreChanged = onScoreChanged
         this.onLivesChanged = onLivesChanged
         this.onGameOver = onGameOver
         this.onXpEarned = onXpEarned
+        this.onStatsUpdated = onStatsUpdated
     }
 
     fun startGame() {
@@ -171,13 +196,24 @@ class RetroGameSurfaceView @JvmOverloads constructor(
                         is GameEvent.LivesChanged -> onLivesChanged?.invoke(event.lives)
                         is GameEvent.GameOver -> {
                             SyntheticAudioEngine.stopBackgroundMusic()
-                            onGameOver?.invoke(event.score)
+                            onGameOver?.invoke(event.score, event.coinsEarned, event.levelReached, event.enemiesKilled)
                         }
                         is GameEvent.XpEarned -> onXpEarned?.invoke()
+                        is GameEvent.StatsUpdated -> {
+                            onStatsUpdated?.invoke(
+                                event.score,
+                                event.lives,
+                                event.multiplier,
+                                event.coinsEarned,
+                                event.enemiesKilled
+                            )
+                        }
                     }
                 }
             }
             gameThread?.setGameLevel(startingLevel)
+            gameThread?.selectedSkin = selectedSkinValue
+            gameThread?.setBoosters(boosterShieldValue, boosterDoubleDamageValue, boosterWeaponLevelValue)
             gameThread?.hapticFeedbackEnabled = hapticFeedbackEnabled
             gameThread?.running = true
             gameThread?.start()
@@ -259,6 +295,27 @@ class GameThread(
     private var doubleDamageTimer = 0f
     private var doubleScoreTimer = 0f
     private var magnetTimer = 0f
+
+    // Pre-game selected skins and boosters
+    var selectedSkin: String = "DEFAULT"
+    var boosterShield: Boolean = false
+    var boosterDoubleDamage: Boolean = false
+    var boosterWeaponLevel: Int = 1
+
+    // Combos & Multipliers
+    private var comboStreak = 0
+    private var lastKillTimeMs = 0L
+    private var currentMultiplier = 1
+
+    // Cumulative session stats
+    private var coinsEarnedInRun = 0
+    private var enemiesDestroyedInRun = 0
+
+    fun setBoosters(shield: Boolean, doubleDamage: Boolean, weaponLevel: Int) {
+        boosterShield = shield
+        boosterDoubleDamage = doubleDamage
+        boosterWeaponLevel = weaponLevel
+    }
 
     // Space Interceptor Coordinates
     private var playerX = 540f
@@ -419,7 +476,20 @@ class GameThread(
         }
     }
 
+    private fun applyBoosters() {
+        if (boosterShield) {
+            isShieldActive = true
+            shieldTimer = 300f
+        }
+        if (boosterDoubleDamage) {
+            doubleDamageTimer = 45f
+        }
+        activeWeaponLevel = boosterWeaponLevel.coerceIn(1, 5)
+    }
+
     override fun run() {
+        applyBoosters()
+        lastFrameTime = System.nanoTime()
         while (running) {
             if (paused) {
                 try {
@@ -634,7 +704,9 @@ class GameThread(
                     SyntheticAudioEngine.playExplosion()
                     screenShakeDuration = 0.4f
                     if (lives <= 0) {
-                        onGameEvent(GameEvent.GameOver(score))
+                        onGameEvent(GameEvent.GameOver(score, coinsEarnedInRun, gameLevel, enemiesDestroyedInRun))
+                    } else {
+                        onGameEvent(GameEvent.StatsUpdated(score, lives, currentMultiplier, coinsEarnedInRun, enemiesDestroyedInRun))
                     }
                 }
             } else if (enemy.y > canvasHeight + 100f) {
@@ -644,7 +716,9 @@ class GameThread(
                     lives--
                     onGameEvent(GameEvent.LivesChanged(lives))
                     if (lives <= 0) {
-                        onGameEvent(GameEvent.GameOver(score))
+                        onGameEvent(GameEvent.GameOver(score, coinsEarnedInRun, gameLevel, enemiesDestroyedInRun))
+                    } else {
+                        onGameEvent(GameEvent.StatsUpdated(score, lives, currentMultiplier, coinsEarnedInRun, enemiesDestroyedInRun))
                     }
                 }
             }
@@ -1008,10 +1082,34 @@ class GameThread(
             EnemyType.SPLITTER -> 180
             EnemyType.BOSS -> 1200
         }
-        val gainedScore = if (doubleScoreTimer > 0f) scoreForKill * 2 else scoreForKill
+        
+        // Track stats for this run
+        val coinsReward = when(enemy.type) {
+            EnemyType.BASIC, EnemyType.MINI_SPLIT -> 1
+            EnemyType.SPEED -> 2
+            EnemyType.KAMIKAZE -> 3
+            EnemyType.HEAVY -> 4
+            EnemyType.SPLITTER -> 3
+            EnemyType.BOSS -> 50
+        }
+        coinsEarnedInRun += coinsReward
+        enemiesDestroyedInRun++
+
+        // Combo Multiplier System
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastKillTimeMs < 1500L) {
+            comboStreak++
+        } else {
+            comboStreak = 1
+        }
+        lastKillTimeMs = currentTime
+        currentMultiplier = (1 + comboStreak / 4).coerceAtMost(5)
+
+        val gainedScore = (if (doubleScoreTimer > 0f) scoreForKill * 2 else scoreForKill) * currentMultiplier
         score += gainedScore
         totalEnemiesDestroyedInWave++
         onGameEvent(GameEvent.ScoreChanged(score))
+        onGameEvent(GameEvent.StatsUpdated(score, lives, currentMultiplier, coinsEarnedInRun, enemiesDestroyedInRun))
 
         // Trigger dynamic splitter division
         if (enemy.type == EnemyType.SPLITTER) {
@@ -1272,23 +1370,74 @@ class GameThread(
             // Draw sleek futuristic Player Ship
             val wingSpan = 52f
             val noseLength = 65f
-            playerPaint.color = Color.parseColor("#22D3EE") // High energy neon Cyan
             
-            val shipPath = Path().apply {
-                moveTo(playerX, playerY - noseLength) // nose cone
-                lineTo(playerX - wingSpan, playerY + 25f) // left wing tip
-                lineTo(playerX - wingSpan * 0.4f, playerY + 15f) // fuselage bend
-                lineTo(playerX, playerY + 35f) // retro exhaust thruster node
-                lineTo(playerX + wingSpan * 0.4f, playerY + 15f)
-                lineTo(playerX + wingSpan, playerY + 25f) // right wing tip
-                close()
+            var thrusterColor = "#F53F5E" // standard fire
+            when (selectedSkin) {
+                "NEON_VORTEX" -> {
+                    playerPaint.color = Color.parseColor("#A855F7") // Vibrant Purple
+                    thrusterColor = "#EC4899" // Pink thruster flare
+                    // Double winged interceptor path
+                    val shipPath = Path().apply {
+                        moveTo(playerX, playerY - noseLength - 10f) // long sharp nose
+                        lineTo(playerX - wingSpan, playerY + 15f) // forward wing tip
+                        lineTo(playerX - wingSpan * 0.5f, playerY) // split wing spacer
+                        lineTo(playerX - wingSpan * 0.8f, playerY + 30f) // secondary wing tip
+                        lineTo(playerX, playerY + 40f) // exhaust
+                        lineTo(playerX + wingSpan * 0.8f, playerY + 30f)
+                        lineTo(playerX + wingSpan * 0.5f, playerY)
+                        lineTo(playerX + wingSpan, playerY + 15f)
+                        close()
+                    }
+                    canvas.drawPath(shipPath, playerPaint)
+                }
+                "PHOENIX_FIRE" -> {
+                    playerPaint.color = Color.parseColor("#F59E0B") // Fiery Orange-Gold
+                    thrusterColor = "#EF4444" // Crimson thruster flare
+                    // Delta forward swept wing fighter path
+                    val shipPath = Path().apply {
+                        moveTo(playerX, playerY - noseLength + 10f)
+                        lineTo(playerX - wingSpan * 1.2f, playerY - 15f) // swept forward wings
+                        lineTo(playerX - wingSpan * 0.3f, playerY + 20f)
+                        lineTo(playerX, playerY + 35f)
+                        lineTo(playerX + wingSpan * 0.3f, playerY + 20f)
+                        lineTo(playerX + wingSpan * 1.2f, playerY - 15f)
+                        close()
+                    }
+                    canvas.drawPath(shipPath, playerPaint)
+                }
+                "CYBER_SHADOW" -> {
+                    playerPaint.color = Color.parseColor("#10B981") // Matrix Emerald Green
+                    thrusterColor = "#34D399" // Mint thruster flare
+                    // Aerodynamic solid triangular shroud path
+                    val shipPath = Path().apply {
+                        moveTo(playerX, playerY - noseLength - 15f) // long needle tip
+                        lineTo(playerX - wingSpan * 0.8f, playerY + 35f)
+                        lineTo(playerX, playerY + 20f) // concave inner base
+                        lineTo(playerX + wingSpan * 0.8f, playerY + 35f)
+                        close()
+                    }
+                    canvas.drawPath(shipPath, playerPaint)
+                }
+                else -> {
+                    playerPaint.color = Color.parseColor("#22D3EE") // High energy neon Cyan
+                    thrusterColor = "#6366F1" // Indigo thruster flare
+                    val shipPath = Path().apply {
+                        moveTo(playerX, playerY - noseLength) // nose cone
+                        lineTo(playerX - wingSpan, playerY + 25f) // left wing tip
+                        lineTo(playerX - wingSpan * 0.4f, playerY + 15f) // fuselage bend
+                        lineTo(playerX, playerY + 35f) // retro exhaust thruster node
+                        lineTo(playerX + wingSpan * 0.4f, playerY + 15f)
+                        lineTo(playerX + wingSpan, playerY + 25f) // right wing tip
+                        close()
+                    }
+                    canvas.drawPath(shipPath, playerPaint)
+                }
             }
-            canvas.drawPath(shipPath, playerPaint)
 
             // Dynamic core engine visual flare pulsing
             val engineGlow = Paint().apply {
                 isAntiAlias = true
-                color = Color.parseColor("#F53F5E") // Thruster fire Red
+                color = Color.parseColor(thrusterColor)
                 style = Paint.Style.FILL
             }
             val plumeSize = 20f + (sin(System.currentTimeMillis() * 0.05f) * 10f)
