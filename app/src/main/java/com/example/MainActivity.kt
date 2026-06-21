@@ -155,10 +155,16 @@ fun MainAppContainer() {
         ) { targetScreen ->
             when (targetScreen) {
                 Screen.Splash -> SplashScreen(
-                    onTimeout = { currentScreen = Screen.Onboarding }
+                    onTimeout = { 
+                        val completed = prefs.getBoolean("onboarding_completed", false)
+                        currentScreen = if (completed) Screen.Main else Screen.Onboarding 
+                    }
                 )
                 Screen.Onboarding -> OnboardingFlow(
-                    onComplete = { currentScreen = Screen.Main }
+                    onComplete = { 
+                        prefs.edit().putBoolean("onboarding_completed", true).apply()
+                        currentScreen = Screen.Main 
+                    }
                 )
                 Screen.Main -> MainDashboard(
                     playerLevel = playerLevel,
@@ -620,120 +626,119 @@ fun OnboardingFlow(onComplete: () -> Unit) {
     var currentPage by remember { mutableStateOf(0) }
     val totalPages = 4
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Column(
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp)
+            .padding(top = 28.dp, bottom = 24.dp)
+    ) {
+        // Slider content with AnimatedContent for smooth slide transitions
+        AnimatedContent(
+            targetState = currentPage,
+            transitionSpec = {
+                if (targetState > initialState) {
+                    (slideInHorizontally(initialOffsetX = { 600 }) + fadeIn()) togetherWith
+                            (slideOutHorizontally(targetOffsetX = { -600 }) + fadeOut())
+                } else {
+                    (slideInHorizontally(initialOffsetX = { -600 }) + fadeIn()) togetherWith
+                            (slideOutHorizontally(targetOffsetX = { 600 }) + fadeOut())
+                }
+            },
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 24.dp)
-                .padding(top = 80.dp, bottom = 40.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            
-            // Slider content with AnimatedContent for smooth slide transitions
-            AnimatedContent(
-                targetState = currentPage,
-                transitionSpec = {
-                    if (targetState > initialState) {
-                        (slideInHorizontally(initialOffsetX = { 600 }) + fadeIn()) togetherWith
-                                (slideOutHorizontally(targetOffsetX = { -600 }) + fadeOut())
-                    } else {
-                        (slideInHorizontally(initialOffsetX = { -600 }) + fadeIn()) togetherWith
-                                (slideOutHorizontally(targetOffsetX = { 600 }) + fadeOut())
-                    }
-                },
-                modifier = Modifier.weight(1f),
-                label = "onboardingPager"
-            ) { page ->
-                when (page) {
-                    0 -> OnboardingIntroPage()
-                    1 -> OnboardingFeatureHighlightPage()
-                    2 -> OnboardingPowerupsPage()
-                    3 -> OnboardingGetStartedPage(onComplete = onComplete)
-                }
+                .padding(top = 40.dp, bottom = 120.dp),
+            label = "onboardingPager"
+        ) { page ->
+            when (page) {
+                0 -> OnboardingIntroPage()
+                1 -> OnboardingFeatureHighlightPage()
+                2 -> OnboardingPowerupsPage()
+                3 -> OnboardingGetStartedPage(onComplete = onComplete)
             }
-
-            // Dots Indicator & Action Row
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                // Progress dots
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(vertical = 16.dp)
-                ) {
-                    repeat(totalPages) { idx ->
-                        val active = idx == currentPage
-                        val dotWidth by animateDpAsState(
-                            targetValue = if (active) 24.dp else 8.dp, 
-                            animationSpec = spring(),
-                            label = "dotWidth"
-                        )
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 4.dp)
-                                .height(8.dp)
-                                .width(dotWidth)
-                                .clip(CircleShape)
-                                .background(if (active) NeonCyan else NeonIndigo.copy(alpha = 0.5f))
-                        )
-                    }
-                }
-
-                // Nav buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (currentPage > 0) {
-                        OutlinedButton(
-                            onClick = { currentPage-- },
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(end = 8.dp)
-                                .testTag("btn_prev"),
-                            border = BorderStroke(1.dp, NeonIndigo),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("BACK", color = Color.White)
-                        }
-                    }
-
-                    Button(
-                        onClick = {
-                            if (currentPage < totalPages - 1) {
-                                currentPage++
-                            } else {
-                                onComplete()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonIndigo),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .weight(if (currentPage == 0) 2f else 1f)
-                            .testTag("btn_next")
-                    ) {
-                        Text(
-                            text = if (currentPage == totalPages - 1) "START EXPERIENCE" else "NEXT",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-
         }
 
-        // Top Right Skip Anchor - drawn last to ensure it remains clickable on top of children Columns
+        // Dots Indicator & Action Row - pinned safely to bottom of Box container
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(bottom = 8.dp)
+        ) {
+            // Progress dots
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(vertical = 12.dp)
+            ) {
+                repeat(totalPages) { idx ->
+                    val active = idx == currentPage
+                    val dotWidth by animateDpAsState(
+                        targetValue = if (active) 24.dp else 8.dp, 
+                        animationSpec = spring(),
+                        label = "dotWidth"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp)
+                            .height(8.dp)
+                            .width(dotWidth)
+                            .clip(CircleShape)
+                            .background(if (active) NeonCyan else NeonIndigo.copy(alpha = 0.5f))
+                    )
+                }
+            }
+
+            // Nav buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (currentPage > 0) {
+                    OutlinedButton(
+                        onClick = { currentPage-- },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp)
+                            .testTag("btn_prev"),
+                        border = BorderStroke(1.dp, NeonIndigo),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("BACK", color = Color.White)
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        if (currentPage < totalPages - 1) {
+                            currentPage++
+                        } else {
+                            onComplete()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonIndigo),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(if (currentPage == 0) 2f else 1f)
+                        .testTag("btn_next")
+                ) {
+                    Text(
+                        text = if (currentPage == totalPages - 1) "START EXPERIENCE" else "NEXT",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        // Top Right Skip Anchor - drawn last to ensure it remains clickable on top of children
         TextButton(
             onClick = onComplete,
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .statusBarsPadding()
-                .padding(16.dp)
+                .padding(top = 4.dp)
                 .testTag("onboarding_skip"),
             colors = ButtonDefaults.textButtonColors(contentColor = NeonCyan)
         ) {
@@ -748,15 +753,15 @@ fun OnboardingIntroPage() {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxWidth()
     ) {
         // Beautiful glass container with animated tech globe
         Box(
             modifier = Modifier
-                .size(220.dp)
+                .size(170.dp)
                 .clip(RoundedCornerShape(24.dp))
                 .background(GlassCardBg)
-                .border(width = 2.dp, brush = Brush.linearGradient(listOf(NeonCyan, Color.Transparent)), shape = RoundedCornerShape(24.dp)),
+                .border(width = 1.5.dp, brush = Brush.linearGradient(listOf(NeonCyan, Color.Transparent)), shape = RoundedCornerShape(24.dp)),
             contentAlignment = Alignment.Center
         ) {
             val infiniteTransition = rememberInfiniteTransition(label = "gyro")
@@ -776,7 +781,7 @@ fun OnboardingIntroPage() {
                 // Tech rings grid
                 drawCircle(
                     color = NeonCyan.copy(alpha = 0.15f),
-                    radius = 80.dp.toPx(),
+                    radius = 65.dp.toPx(),
                     center = center
                 )
                 
@@ -784,36 +789,36 @@ fun OnboardingIntroPage() {
                 rotate(degrees = angle, pivot = center) {
                     drawOval(
                         color = NeonCyan,
-                        topLeft = Offset(center.x - 70.dp.toPx(), center.y - 20.dp.toPx()),
-                        size = Size(140.dp.toPx(), 40.dp.toPx()),
-                        style = Stroke(width = 2.dp.toPx())
+                        topLeft = Offset(center.x - 55.dp.toPx(), center.y - 18.dp.toPx()),
+                        size = Size(110.dp.toPx(), 36.dp.toPx()),
+                        style = Stroke(width = 1.8.dp.toPx())
                     )
                 }
 
                 rotate(degrees = -angle * 1.5f, pivot = center) {
                     drawOval(
                         color = NeonIndigo,
-                        topLeft = Offset(center.x - 20.dp.toPx(), center.y - 70.dp.toPx()),
-                        size = Size(40.dp.toPx(), 140.dp.toPx()),
-                        style = Stroke(width = 1.5.dp.toPx())
+                        topLeft = Offset(center.x - 18.dp.toPx(), center.y - 55.dp.toPx()),
+                        size = Size(36.dp.toPx(), 110.dp.toPx()),
+                        style = Stroke(width = 1.3.dp.toPx())
                     )
                 }
 
                 // Core shining sun
                 drawCircle(
                     color = Color.White,
-                    radius = 12.dp.toPx(),
+                    radius = 9.dp.toPx(),
                     center = center
                 )
                 drawCircle(
                     color = NeonCyan.copy(alpha = 0.4f),
-                    radius = 24.dp.toPx(),
+                    radius = 18.dp.toPx(),
                     center = center
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(30.dp))
+        Spacer(modifier = Modifier.height(18.dp))
 
         Text(
             text = "Welcome to the Experience",
@@ -822,7 +827,7 @@ fun OnboardingIntroPage() {
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         Text(
             text = "Step inside a hyper-modern universe. Highly immersive layouts, neon fluid interactions, and deep space telemetry dashboards await.",
@@ -840,7 +845,7 @@ fun OnboardingFeatureHighlightPage() {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxWidth()
     ) {
         // Simulated telemetry game card
         Box(
@@ -849,7 +854,7 @@ fun OnboardingFeatureHighlightPage() {
                 .clip(RoundedCornerShape(20.dp))
                 .background(GlassCardBg)
                 .border(1.dp, GlassCardBorder)
-                .padding(18.dp)
+                .padding(14.dp)
         ) {
             Column {
                 Row(
@@ -878,13 +883,13 @@ fun OnboardingFeatureHighlightPage() {
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Gauge bar
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(18.dp)
+                        .height(14.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color.White.copy(alpha = 0.08f))
                 ) {
@@ -897,7 +902,7 @@ fun OnboardingFeatureHighlightPage() {
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 val liveStats = listOf(
                     "WIN STREAK" to "12 STRAIGHT",
@@ -909,7 +914,7 @@ fun OnboardingFeatureHighlightPage() {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 4.dp),
+                            .padding(vertical = 3.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(text = label, color = Color.White.copy(alpha = 0.5f), style = MaterialTheme.typography.labelSmall)
@@ -919,7 +924,7 @@ fun OnboardingFeatureHighlightPage() {
             }
         }
 
-        Spacer(modifier = Modifier.height(30.dp))
+        Spacer(modifier = Modifier.height(18.dp))
 
         Text(
             text = "Play. Compete. Progress.",
@@ -928,7 +933,7 @@ fun OnboardingFeatureHighlightPage() {
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         Text(
             text = "Track real-time XP telemetry charts. Complete daily level configurations, claim massive neon bounty multipliers, and push to top score leaderboard.",
@@ -947,13 +952,13 @@ fun OnboardingPowerupsPage() {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxWidth()
     ) {
         Text(
             text = "Select & Power Up",
             style = MaterialTheme.typography.labelLarge,
             color = NeonCyan,
-            modifier = Modifier.padding(bottom = 12.dp)
+            modifier = Modifier.padding(bottom = 8.dp)
         )
 
         // Interactive card select list
@@ -965,55 +970,56 @@ fun OnboardingPowerupsPage() {
 
         powerups.forEachIndexed { index, (title, desc, color) ->
             val isSelected = activePowerUp == index
-            val scale by animateFloatAsState(if (isSelected) 1.03f else 1.0f, label = "pScale")
+            val scale by animateFloatAsState(if (isSelected) 1.02f else 1.0f, label = "pScale")
             
             Box(
                 modifier = Modifier
                     .fillMaxWidth(0.95f)
-                    .padding(vertical = 6.dp)
+                    .padding(vertical = 4.dp)
                     .scale(scale)
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(if (isSelected) GlassCardBg else Color.Transparent)
                     .border(
-                        width = 1.5.dp,
+                        width = 1.2.dp,
                         brush = if (isSelected) Brush.linearGradient(listOf(color, NeonIndigo))
                         else Brush.linearGradient(
                             listOf(
-                                Color.White.copy(alpha = 0.1f),
+                                Color.White.copy(alpha = 0.08f),
                                 Color.Transparent
-                            )
+                             )
                         ),
-                        shape = RoundedCornerShape(16.dp)
+                        shape = RoundedCornerShape(12.dp)
                     )
                     .clickable { activePowerUp = index }
-                    .padding(14.dp)
+                    .padding(10.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = if (isSelected) Icons.Default.Check else Icons.Default.Star,
                         contentDescription = "Selection",
                         tint = if (isSelected) color else Color.White.copy(alpha = 0.3f),
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(20.dp)
                     )
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
                             text = title, 
                             color = if (isSelected) color else Color.White,
                             style = MaterialTheme.typography.titleLarge,
-                            fontSize = 18.sp
+                            fontSize = 15.sp
                         )
                         Text(
                             text = desc, 
                             color = Color.White.copy(alpha = 0.6f),
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontSize = 11.sp
                         )
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         Text(
             text = "Interactive Powerups",
@@ -1022,7 +1028,7 @@ fun OnboardingPowerupsPage() {
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
         Text(
             text = "Tap on target cells directly. Customize your loadout configuration files before battle start.",
@@ -1039,15 +1045,15 @@ fun OnboardingGetStartedPage(onComplete: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxWidth()
     ) {
         // Loads our highly customized, beautifully generated IMG gamer profile avatar
         Box(
             modifier = Modifier
-                .size(160.dp)
+                .size(130.dp)
                 .clip(CircleShape)
-                .border(width = 3.dp, brush = Brush.sweepGradient(listOf(NeonCyan, NeonIndigo, NeonCyan)), shape = CircleShape)
-                .shadow(elevation = 16.dp, shape = CircleShape)
+                .border(width = 2.5.dp, brush = Brush.sweepGradient(listOf(NeonCyan, NeonIndigo, NeonCyan)), shape = CircleShape)
+                .shadow(elevation = 12.dp, shape = CircleShape)
         ) {
             Image(
                 painter = painterResource(id = R.drawable.img_gamer_avatar),
@@ -1057,7 +1063,7 @@ fun OnboardingGetStartedPage(onComplete: () -> Unit) {
             )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         Text(
             text = "SYSTEM PROFILE SYNCED",
@@ -1072,7 +1078,7 @@ fun OnboardingGetStartedPage(onComplete: () -> Unit) {
             fontWeight = FontWeight.ExtraBold
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         Text(
             text = "All systems green. Your cyber profile is mapped seamlessly to active sector leaders.",
@@ -1081,15 +1087,15 @@ fun OnboardingGetStartedPage(onComplete: () -> Unit) {
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         Button(
             onClick = onComplete,
             colors = ButtonDefaults.buttonColors(containerColor = NeonMagentaOrCyan(true)),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(14.dp),
             modifier = Modifier
-                .fillMaxWidth(0.8f)
-                .height(56.dp)
+                .fillMaxWidth(0.85f)
+                .height(50.dp)
                 .testTag("onboarding_start_btn")
         ) {
             Text(
@@ -1146,6 +1152,7 @@ fun MainDashboard(
     
     // Play Game interactive states
     var isPlayingMiniGame by remember { mutableStateOf(false) }
+    var isResumingSavedSession by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -1343,13 +1350,19 @@ fun DashboardHomeView(
     playerLevel: Int,
     playerXp: Float,
     onGainXp: () -> Unit,
-    onLaunchGame: () -> Unit,
+    onLaunchGame: (Boolean) -> Unit,
     onGoToTab: (DashboardTab) -> Unit
 ) {
     // Simple state to track claiming rewards
     var rewardsClaimed by remember { mutableStateOf(false) }
     var showClaimSuccess by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    val context = LocalContext.current
+    val prefs = remember(context) { context.getSharedPreferences("vortex_racer_prefs", android.content.Context.MODE_PRIVATE) }
+    val isSavedActive = remember { prefs.getBoolean("saved_game_active", false) }
+    val savedLevel = remember { prefs.getInt("saved_game_level", 1) }
+    val savedScore = remember { prefs.getInt("saved_game_score", 0) }
 
     LazyColumn(
         modifier = Modifier
@@ -1466,12 +1479,109 @@ fun DashboardHomeView(
             }
         }
 
+        // Saved Active Interrupted Run Card
+        if (isSavedActive) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onLaunchGame(true) }
+                        .testTag("card_resume_game")
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .padding(horizontal = 2.dp, vertical = 2.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(
+                                Brush.linearGradient(listOf(Color(0xFFEF4444).copy(alpha = 0.25f), Color(0xFFFBBF24).copy(alpha = 0.25f)))
+                            )
+                    )
+                    
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(GlassCardBgHigh)
+                            .border(width = 1.25.dp, color = Color(0xFFFBBF24).copy(alpha = 0.4f), shape = RoundedCornerShape(24.dp))
+                            .padding(20.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(Color(0xFFFBBF24).copy(alpha = 0.2f))
+                                        .border(1.dp, Color(0xFFFBBF24).copy(alpha = 0.3f), RoundedCornerShape(16.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("🛸", fontSize = 28.sp)
+                                }
+                                
+                                Column {
+                                    Text(
+                                        text = "Resume Run",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = Color.Yellow,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 19.sp
+                                    )
+                                    Text(
+                                        text = "Sector $savedLevel  •  Score: $savedScore Pts",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Slate100,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = "Resume Active",
+                                tint = Color.Yellow,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            text = "You have an active session in progress! Engage immediate warp speed and rescue your ship from incoming waves.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Slate400,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+
+                        Button(
+                            onClick = { onLaunchGame(true) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.Yellow,
+                                contentColor = Color.Black
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().height(44.dp)
+                        ) {
+                            Text("WARP BACK TO RUN", fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                        }
+                    }
+                }
+            }
+        }
+
         // 1. HERO BIG CARD: PLAY ARCADE INVASION GAME! (Frosted Glass glow style)
         item {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onLaunchGame() }
+                    .clickable { onLaunchGame(false) }
                     .testTag("card_play_game")
             ) {
                 // Background shadow glow (Absolute -inset-0.5 bg-gradient-to-r from-indigo-600 to-cyan-500 blur opacity-25 equivalent)
@@ -1512,7 +1622,7 @@ fun DashboardHomeView(
                                     .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(16.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("🎮", fontSize = 28.sp)
+                                      Text("🎮", fontSize = 28.sp)
                             }
                             
                             Column {
@@ -1549,7 +1659,7 @@ fun DashboardHomeView(
                     )
 
                     Button(
-                        onClick = onLaunchGame,
+                        onClick = { onLaunchGame(false) },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = NeonCyan,
                             contentColor = Color.Black
@@ -1784,6 +1894,7 @@ fun PowerUpIndicator(name: String, color: Color, active: Boolean) {
 @Composable
 fun MiniRetroGameView(
     selectedLevel: Int,
+    resumeSavedSession: Boolean = false,
     hapticFeedbackEnabled: Boolean = true,
     selectedSkin: String,
     shieldBoosterCount: Int,
@@ -1796,20 +1907,34 @@ fun MiniRetroGameView(
     onGameCompleted: (Int, Boolean) -> Unit
 ) {
     val context = LocalContext.current
-    var score by remember { mutableIntStateOf(0) }
-    var lives by remember { mutableIntStateOf(3) }
-    var coinsEarnedThisRun by remember { mutableIntStateOf(0) }
-    var currentMultiplier by remember { mutableIntStateOf(1) }
-    var enemiesKilledThisRun by remember { mutableIntStateOf(0) }
-    var survivalTimerSeconds by remember { mutableIntStateOf(0) }
+    val prefs = remember(context) { context.getSharedPreferences("vortex_racer_prefs", android.content.Context.MODE_PRIVATE) }
+
+    val initialScore = remember { if (resumeSavedSession) prefs.getInt("saved_game_score", 0) else 0 }
+    val initialLives = remember { if (resumeSavedSession) prefs.getInt("saved_game_lives", 3) else 3 }
+    val initialCoins = remember { if (resumeSavedSession) prefs.getInt("saved_game_coins", 0) else 0 }
+    val initialMultiplier = remember { if (resumeSavedSession) prefs.getInt("saved_game_multiplier", 1) else 1 }
+    val initialKills = remember { if (resumeSavedSession) prefs.getInt("saved_game_kills", 0) else 0 }
+    val initialDuration = remember { if (resumeSavedSession) prefs.getInt("saved_game_duration", 0) else 0 }
+    val initialShield = remember { if (resumeSavedSession) prefs.getBoolean("saved_game_shield", false) else false }
+    val initialDamage = remember { if (resumeSavedSession) prefs.getBoolean("saved_game_damage", false) else false }
+    val initialWeapon = remember { if (resumeSavedSession) prefs.getBoolean("saved_game_weapon", false) else false }
+    val resolvedLevel = remember { if (resumeSavedSession) prefs.getInt("saved_game_level", selectedLevel) else selectedLevel }
+
+    var score by remember { mutableIntStateOf(initialScore) }
+    var lives by remember { mutableIntStateOf(initialLives) }
+    var coinsEarnedThisRun by remember { mutableIntStateOf(initialCoins) }
+    var currentMultiplier by remember { mutableIntStateOf(initialMultiplier) }
+    var enemiesKilledThisRun by remember { mutableIntStateOf(initialKills) }
+    var survivalTimerSeconds by remember { mutableIntStateOf(initialDuration) }
     
-    var gameStarted by remember { mutableStateOf(false) }
+    var gameStarted by remember { mutableStateOf(resumeSavedSession) }
     var isGameOver by remember { mutableStateOf(false) }
+    var isGamePaused by remember { mutableStateOf(false) }
 
     // Pre-game equipment equip selection
-    var equipShield by remember { mutableStateOf(false) }
-    var equipDamage by remember { mutableStateOf(false) }
-    var equipWeapon by remember { mutableStateOf(false) }
+    var equipShield by remember { mutableStateOf(initialShield) }
+    var equipDamage by remember { mutableStateOf(initialDamage) }
+    var equipWeapon by remember { mutableStateOf(initialWeapon) }
 
     // Track active quest claims in this run
     var activeQuest1Claimed by remember { mutableStateOf(false) }
@@ -1822,6 +1947,14 @@ fun MiniRetroGameView(
     // Rollup Game Over Animated Score Ticker
     var animatedScore by remember { mutableIntStateOf(0) }
 
+    LaunchedEffect(isGamePaused) {
+        if (isGamePaused) {
+            surfaceViewRef?.pauseGame()
+        } else {
+            surfaceViewRef?.resumeGame()
+        }
+    }
+
     DisposableEffect(gameStarted) {
         onDispose {
             surfaceViewRef?.stopGame()
@@ -1831,7 +1964,9 @@ fun MiniRetroGameView(
 
     LaunchedEffect(gameStarted, isGameOver) {
         if (gameStarted && !isGameOver) {
-            survivalTimerSeconds = 0
+            if (!resumeSavedSession) {
+                survivalTimerSeconds = 0
+            }
             while (true) {
                 delay(1000L)
                 survivalTimerSeconds += 1
@@ -1894,24 +2029,60 @@ fun MiniRetroGameView(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        onClick = {
-                            surfaceViewRef?.stopGame()
-                            surfaceViewRef = null
-                            onClose()
-                        },
-                        modifier = Modifier.size(36.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack, 
-                            contentDescription = "Return to deck", 
-                            tint = Color.White
-                        )
+                        IconButton(
+                            onClick = {
+                                surfaceViewRef?.stopGame()
+                                surfaceViewRef = null
+                                onClose()
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack, 
+                                contentDescription = "Return to deck", 
+                                tint = Color.White
+                            )
+                        }
+
+                        if (gameStarted && !isGameOver) {
+                            IconButton(
+                                onClick = { isGamePaused = !isGamePaused },
+                                modifier = Modifier.size(36.dp).testTag("play_pause_button")
+                            ) {
+                                if (isGamePaused) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = "Resume",
+                                        tint = Color.Yellow
+                                    )
+                                } else {
+                                    androidx.compose.foundation.Canvas(modifier = Modifier.size(16.dp)) {
+                                        val w = size.width
+                                        val h = size.height
+                                        val barWidth = 4.dp.toPx()
+                                        drawRect(
+                                            color = Color.White,
+                                            topLeft = Offset(2.dp.toPx(), 0f),
+                                            size = Size(barWidth, h)
+                                        )
+                                        drawRect(
+                                            color = Color.White,
+                                            topLeft = Offset(w - 2.dp.toPx() - barWidth, 0f),
+                                            size = Size(barWidth, h)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "SECTOR $selectedLevel", 
+                            text = "SECTOR $resolvedLevel", 
                             style = MaterialTheme.typography.labelSmall, 
                             color = NeonCyan.copy(alpha = 0.8f),
                             fontWeight = FontWeight.Bold,
@@ -2157,7 +2328,7 @@ fun MiniRetroGameView(
                     AndroidView(
                         factory = { ctx ->
                             RetroGameSurfaceView(ctx).apply {
-                                setStartLevel(selectedLevel)
+                                setStartLevel(resolvedLevel)
                                 setSelectedSkin(selectedSkin)
                                 setBoosters(equipShield, equipDamage, if (equipWeapon) 2 else 1)
                                 setHapticFeedbackEnabled(hapticFeedbackEnabled)
@@ -2172,12 +2343,16 @@ fun MiniRetroGameView(
                                         coinsEarnedThisRun = collectedCoins
                                         enemiesKilledThisRun = killedEnemies
                                         isGameOver = true
+                                        prefs.edit().putBoolean("saved_game_active", false).apply()
                                         onAddCoins(collectedCoins)
                                         onGameCompleted(finalScore, false)
                                     },
                                     onXpEarned = { 
                                         onGainXp() 
                                         onGameCompleted(score, true) 
+                                        if (prefs.getBoolean("saved_game_active", false)) {
+                                            prefs.edit().putInt("saved_game_level", resolvedLevel + 1).apply()
+                                        }
                                     },
                                     onStatsUpdated = { newScore, newLives, newMultiplier, collectedCoins, killedEnemies ->
                                         score = newScore
@@ -2185,6 +2360,21 @@ fun MiniRetroGameView(
                                         currentMultiplier = newMultiplier
                                         coinsEarnedThisRun = collectedCoins
                                         enemiesKilledThisRun = killedEnemies
+                                        if (newLives > 0 && !isGameOver) {
+                                            prefs.edit()
+                                                .putBoolean("saved_game_active", true)
+                                                .putInt("saved_game_score", newScore)
+                                                .putInt("saved_game_lives", newLives)
+                                                .putInt("saved_game_level", resolvedLevel)
+                                                .putInt("saved_game_coins", collectedCoins)
+                                                .putInt("saved_game_multiplier", newMultiplier)
+                                                .putInt("saved_game_kills", killedEnemies)
+                                                .putInt("saved_game_duration", survivalTimerSeconds)
+                                                .putBoolean("saved_game_shield", equipShield)
+                                                .putBoolean("saved_game_damage", equipDamage)
+                                                .putBoolean("saved_game_weapon", equipWeapon)
+                                                .apply()
+                                        }
                                     }
                                 )
                                 surfaceViewRef = this
@@ -2267,6 +2457,74 @@ fun MiniRetroGameView(
                             progressRatio = (score.toFloat() / 2000f).coerceIn(0f, 1f),
                             isCompleted = activeQuest3Claimed
                         )
+                    }
+
+                    // Blurred Glass Interstellar Pause Overlay
+                    if (isGamePaused) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.85f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .padding(24.dp)
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .background(Color(0xFF0D0D26).copy(alpha = 0.95f))
+                                    .border(2.dp, NeonIndigo.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                                    .padding(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Paused",
+                                    tint = NeonIndigo,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "MISSION INTERRUPTED",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = 1.sp
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "Your exact combat situation has been synchronized. Feel free to minimize or close the app safely.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Slate400,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 18.sp
+                                )
+                                Spacer(modifier = Modifier.height(24.dp))
+                                
+                                Button(
+                                    onClick = { isGamePaused = false },
+                                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth().height(46.dp).testTag("resume_mission_btn")
+                                ) {
+                                    Text("RESUME COMBAT", color = Color.Black, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = {
+                                        // Clear saved run if they explicitly discard it!
+                                        prefs.edit().putBoolean("saved_game_active", false).apply()
+                                        surfaceViewRef?.stopGame()
+                                        surfaceViewRef = null
+                                        onClose()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth().height(46.dp).testTag("save_and_quit_btn")
+                                ) {
+                                    Text("DISCARD & GO TO DECK", color = Color.White)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2502,41 +2760,122 @@ fun ShopView(
                             val isUnlocked = unlockedSkins.contains(skin.id)
                             val isEquipped = selectedSkin == skin.id
                             
-                            Row(
+                            androidx.compose.material3.Card(
+                                colors = androidx.compose.material3.CardDefaults.cardColors(
+                                    containerColor = if (isEquipped) skin.glowColor.copy(alpha = 0.05f) else Color.White.copy(alpha = 0.02f)
+                                ),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(
+                                    width = if (isEquipped) 1.5.dp else 1.dp,
+                                    color = if (isEquipped) skin.glowColor else Color.White.copy(alpha = 0.08f)
+                                ),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color.White.copy(alpha = 0.03f))
-                                    .border(1.dp, if (isEquipped) skin.glowColor else Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
-                                    .padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                    .padding(vertical = 2.dp)
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(skin.title, fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                                    Text(skin.description, fontSize = 10.sp, color = Slate400, maxLines = 1)
-                                }
-                                
-                                Button(
-                                    onClick = {
-                                        if (isUnlocked) {
-                                            onSelectSkin(skin.id)
-                                        } else if (playerCoins >= skin.price) {
-                                            onPurchaseSkin(skin.id, skin.price)
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (isEquipped) skin.glowColor else if (isUnlocked) Color.White.copy(alpha = 0.08f) else Color.Yellow.copy(alpha = 0.15f)
-                                    ),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.height(34.dp).testTag("skin_purchase_btn_${skin.id.lowercase()}")
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = if (isEquipped) "EQUIPPED" else if (isUnlocked) "EQUIP" else "💰 ${skin.price}",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isEquipped) Color.Black else if (isUnlocked) Color.White else Color.Yellow
-                                    )
+                                    // Ship Vector Preview Card canvas
+                                    Box(
+                                        modifier = Modifier
+                                            .size(52.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(Color.Black.copy(alpha = 0.45f))
+                                            .border(1.dp, skin.glowColor.copy(alpha = 0.25f), RoundedCornerShape(10.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        androidx.compose.foundation.Canvas(modifier = Modifier.size(34.dp)) {
+                                            val w = size.width
+                                            val h = size.height
+                                            val path = androidx.compose.ui.graphics.Path().apply {
+                                                when (skin.id) {
+                                                    "DEFAULT" -> {
+                                                        moveTo(w / 2f, 4f)
+                                                        lineTo(4f, h - 8f)
+                                                        lineTo(w * 0.4f, h - 14f)
+                                                        lineTo(w / 2f, h - 4f)
+                                                        lineTo(w * 0.6f, h - 14f)
+                                                        lineTo(w - 4f, h - 8f)
+                                                        close()
+                                                    }
+                                                    "NEON_VORTEX" -> {
+                                                        moveTo(w / 2f, 2f)
+                                                        lineTo(4f, h - 18f)
+                                                        lineTo(w * 0.25f, h - 10f)
+                                                        lineTo(w * 0.15f, h - 2f)
+                                                        lineTo(w / 2f, h - 6f)
+                                                        lineTo(w * 0.85f, h - 2f)
+                                                        lineTo(w * 0.75f, h - 10f)
+                                                        lineTo(w - 4f, h - 18f)
+                                                        close()
+                                                    }
+                                                    "PHOENIX_FIRE" -> {
+                                                        moveTo(w / 2f, 8f)
+                                                        lineTo(4f, h - 20f)
+                                                        lineTo(w * 0.35f, h - 4f)
+                                                        lineTo(w / 2f, h - 10f)
+                                                        lineTo(w * 0.65f, h - 4f)
+                                                        lineTo(w - 4f, h - 20f)
+                                                        close()
+                                                    }
+                                                    "CYBER_SHADOW" -> {
+                                                        moveTo(w / 2f, 2f)
+                                                        lineTo(6f, h - 4f)
+                                                        lineTo(w / 2f, h - 12f)
+                                                        lineTo(w - 6f, h - 4f)
+                                                        close()
+                                                    }
+                                                }
+                                            }
+                                            drawPath(
+                                                path = path,
+                                                color = skin.glowColor,
+                                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f)
+                                            )
+                                            
+                                            drawCircle(
+                                                color = Color.White,
+                                                radius = 2.5f,
+                                                center = androidx.compose.ui.geometry.Offset(w / 2f, h * 0.6f)
+                                            )
+                                        }
+                                    }
+                                    
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(skin.title, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                        Text(skin.description, fontSize = 11.sp, color = Slate400, maxLines = 2, lineHeight = 14.sp)
+                                    }
+                                    
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    
+                                    Button(
+                                        onClick = {
+                                            if (isUnlocked) {
+                                                onSelectSkin(skin.id)
+                                            } else if (playerCoins >= skin.price) {
+                                                onPurchaseSkin(skin.id, skin.price)
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isEquipped) skin.glowColor else if (isUnlocked) Color.White.copy(alpha = 0.08f) else Color.Yellow.copy(alpha = 0.15f)
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.height(34.dp).testTag("skin_purchase_btn_${skin.id.lowercase()}")
+                                    ) {
+                                        Text(
+                                            text = if (isEquipped) "EQUIPPED" else if (isUnlocked) "EQUIP" else "💰 ${skin.price}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isEquipped) Color.Black else if (isUnlocked) Color.White else Color.Yellow
+                                        )
+                                    }
                                 }
                             }
                         }

@@ -1219,6 +1219,13 @@ class GameThread(
                 canvas.translate(dx, dy)
             }
 
+            // Dynamic Background Themes based on gameLevel
+            val bgColors = arrayOf("#060613", "#11051F", "#02140D", "#1F0A02", "#0F0211")
+            val gridColors = arrayOf("#121235", "#2E104E", "#0A4C30", "#4A1B02", "#3F0A4A")
+            val themeIndex = (gameLevel - 1).coerceAtLeast(0) % bgColors.size
+            bgPaint.color = Color.parseColor(bgColors[themeIndex])
+            gridPaint.color = Color.parseColor(gridColors[themeIndex])
+
             // Draw deep space background gradient
             canvas.drawRect(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat(), bgPaint)
 

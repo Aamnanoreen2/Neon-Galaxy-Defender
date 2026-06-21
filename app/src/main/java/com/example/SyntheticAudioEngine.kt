@@ -26,6 +26,9 @@ object SyntheticAudioEngine {
     @Volatile
     private var isMusicPlaying: Boolean = false
 
+    @Volatile
+    private var activeTrackCount: Int = 0
+
     fun playShoot() {
         if (!isSoundEnabled || systemVolume <= 0f) return
         executor.execute {
@@ -113,6 +116,13 @@ object SyntheticAudioEngine {
     }
 
     private fun playBuffer(samples: FloatArray) {
+        synchronized(this) {
+            if (activeTrackCount >= 4) {
+                return // Voice stealing / throttling: drop sound to prevent AudioFlinger from crashing at high wave counts!
+            }
+            activeTrackCount++
+        }
+
         val bufferSize = samples.size * 2 // short is 2 bytes
         val track = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             AudioTrack.Builder()
@@ -161,6 +171,10 @@ object SyntheticAudioEngine {
                 track.release()
             } catch (e: Exception) {
                 // Safe disposal
+            } finally {
+                synchronized(this@SyntheticAudioEngine) {
+                    activeTrackCount = (activeTrackCount - 1).coerceAtLeast(0)
+                }
             }
         }
     }
